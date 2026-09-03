@@ -91,7 +91,7 @@ REQUIREMENTS:
             with st.spinner("Searching official Pakistani brand stores for matching outfits..."):
                 # Call Gemini Flash with Google Search Grounding enabled
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash',
+                    model='gemini-2.0-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         tools=[types.Tool(google_search=types.GoogleSearch())],
