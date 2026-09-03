@@ -1,146 +1,147 @@
 import streamlit as st
-import os
 import json
-try:
-    from google import genai
-    from google.genai import types
-except ImportError:
-    # Fallback placeholder for environments without the new SDK installed during initial setup
-    pass
+import os
+from google import genai
+from google.genai import types
+from pydantic import BaseModel, Field
 
-# Set page configuration
-st.set_page_config(
-    page_title="Pakistani Outfit Finder",
-    page_icon="👗",
-    layout="wide"
-)
+# Define Structured JSON Output Schema using Pydantic
+class OutfitSuggestion(BaseModel):
+    brand_name: str = Field(description="Name of the Pakistani brand (e.g., Khaadi, Sapphire, Ethnic, Sana Safinaz, J.)")
+    outfit_title: str = Field(description="Name or title of the dress/outfit")
+    price_pkr: int = Field(description="Approximate retail price in PKR as an integer")
+    fabric: str = Field(description="Fabric material verified or matched")
+    category: str = Field(description="Style category matching user choice (e.g., Embroidered, Simple Casual, Formal)")
+    color: str = Field(description="Primary color of the dress")
+    description: str = Field(description="Short 1-2 sentence description explaining why this fits the user's requirements.")
+    website_url: str = Field(description="The realistic direct URL to this category or collection on the official brand website (e.g., https://sapphireonline.pk or https://khaadi.com)")
 
-st.title("🇵🇰 AI-Powered Pakistani Outfit Finder")
-st.subheader("Find your perfect look across all Pakistani brands")
+class OutfitList(BaseModel):
+    suggestions: list[OutfitSuggestion]
 
-# Sidebar for API Configuration
-st.sidebar.header("Settings")
-api_key = st.sidebar.text_input("Enter Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""))
+# --- STREAMLIT UI SETUP ---
+st.set_page_config(page_title="LibasAI - Pakistani Outfit Finder", page_icon="👗", layout="wide")
 
-if not api_key:
-    st.info("💡 Please enter your Gemini API Key in the sidebar to power the smart recommendations, or use the app with demo search capability.")
+st.title("👗 LibasAI: Pakistani Brand Outfit Finder")
+st.write("Specify your style preferences to search across major Pakistani fashion houses using AI.")
 
-# User Input Form
-with st.form("search_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        category = st.selectbox("Category / Style", ["Casual Simple", "Semi-Formal", "Formal Embroidered", "Bridal Wear", "Kurtas"])
-        fabric = st.selectbox("Fabric Type", ["Lawn", "Cotton", "Khaddar", "Silk", "Chiffon", "Velvet", "Organza"])
-    with col2:
-        color = st.text_input("Color Choice (e.g., Crimson Red, Emerald Green, Pastel Pink)", placeholder="e.g., Royal Blue")
-        price_range = st.slider("Max Budget (PKR)", min_value=1000, max_value=50000, value=7500, step=500)
+# Sidebar configuration for API Credentials
+with st.sidebar:
+    st.header("🔑 API Settings")
+    # Tries to pull from Streamlit Secrets or Environment variable first
+    default_key = os.getenv("GEMINI_API_KEY", "")
+    api_key = st.text_input("Enter Gemini API Key", value=default_key, type="password", 
+                            help="Get an API key from Google AI Studio. Leave empty to use UI Simulator Mode.")
     
-    additional_notes = st.text_input("Any specific preferences? (e.g., '3-piece suit', 'minimalist print', 'Sapphire style')")
-    submit_btn = st.form_submit_button("Search Outfits")
+    if api_key:
+        st.success("API Key loaded successfully!")
+    else:
+        st.info("💡 Running in **Simulator Mode**. Enter a real Gemini API Key to fetch live dynamic AI suggestions.")
 
-# System instruction and schema definition for Gemini Flash
-SYSTEM_INSTRUCTION = (
-    "You are an expert Pakistani fashion personal shopper assistant. "
-    "Based on the user's requirements (fabric, color, price, category), you must recommend 3 realistic "
-    "outfits from real well-known Pakistani brands (e.g., Sapphire, Khaadi, Sana Safinaz, Maria.B, Alkaram, J., Zara Shahjahan). "
-    "Provide realistic product titles, specific prices within their budget, detailed description highlights, "
-    "and matching style tips."
-)
+# Main Input Layout Form Split into Columns
+st.subheader("🎨 Tell Us What You're Looking For")
+col1, col2 = st.columns(2)
 
-# Standardized output structure matching user needs
-JSON_SCHEMA = {
-    "type": "OBJECT",
-    "properties": {
-        "recommendations": {
-            "type": "ARRAY",
-            "items": {
-                "type": "OBJECT",
-                "properties": {
-                    "brand": {"type": "STRING"},
-                    "product_name": {"type": "STRING"},
-                    "estimated_price_pkr": {"type": "INTEGER"},
-                    "fabric": {"type": "STRING"},
-                    "description": {"type": "STRING"},
-                    "styling_tip": {"type": "STRING"}
-                },
-                "required": ["brand", "product_name", "estimated_price_pkr", "fabric", "description", "styling_tip"]
-            }
-        }
-    },
-    "required": ["recommendations"]
-}
+with col1:
+    category = st.selectbox(
+        "Style Category",
+        ["Simple Casual", "Embroidered", "Semi-Formal", "Formal Wear", "Festive/Eid Collection"]
+    )
+    fabric = st.selectbox(
+        "Preferred Fabric",
+        ["Lawn", "Cotton", "Cambric", "Silk", "Chiffon", "Khaddar", "Linen", "Velvet"]
+    )
 
-if submit_btn:
-    with st.spinner("✨ Gemini Flash is scanning top Pakistani brands..."):
-        if api_key:
-            try:
-                # Initialize the modern Google GenAI Client
-                client = genai.Client(api_key=api_key)
-                
-                prompt = f"""
-                Find outfits with these strict criteria:
-                - Category: {category}
-                - Fabric: {fabric}
-                - Preferred Color: {color if color else 'Any complementary color'}
-                - Maximum Budget: {price_range} PKR
-                - Extra preferences: {additional_notes}
-                """
-                
-                response = client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        response_mime_type="application/json",
-                        response_schema=JSON_SCHEMA,
-                        temperature=0.3
-                    ),
-                )
-                
-                # Parse the structured JSON response
-                data = json.loads(response.text)
-                recommendations = data.get("recommendations", [])
-                
-            except Exception as e:
-                st.error(f"Error connecting to Gemini API: {str(e)}")
-                st.warning("🔄 Showing simulation mode results due to API error.")
-                recommendations = []
-        else:
-            # Simulated fallback recommendations when API key is missing
-            recommendations = [
-                {
-                    "brand": "Sapphire",
-                    "product_name": f"Classic {category} Collection Split",
-                    "estimated_price_pkr": int(price_range * 0.75),
-                    "fabric": fabric,
-                    "description": f"A beautiful selection featuring highlighted {color if color else 'traditional'} tones, tailored perfectly for contemporary everyday looks.",
-                    "styling_tip": "Pair with statement silver jhumkas and traditional khussas for a complete look."
-                },
-                {
-                    "brand": "Khaadi",
-                    "product_name": f"Daily Casuals {fabric} Edition",
-                    "estimated_price_pkr": int(price_range * 0.85),
-                    "fabric": fabric,
-                    "description": f"Intricate patterns focusing on {color if color else 'neutral'} highlights. Breathable and comfortable material.",
-                    "styling_tip": "Style with a neat slicked-back ponytail and a metallic minimalist watch."
-                }
-            ]
+with col2:
+    color = st.text_input("Preferred Color(s)", placeholder="e.g., Royal Blue, Mustard, Emerald Green, Black")
+    max_price = st.slider("Maximum Budget (PKR)", min_value=2000, max_value=30000, value=7500, step=500)
+
+# Submit query
+if st.button("✨ Find My Perfect Outfit", type="primary"):
+    if not color.strip():
+        st.warning("Please specify a preferred color to narrow down the look!")
+    else:
+        # Build prompt payload
+        prompt = f"""
+        Find 3 realistic dress options from popular retail fashion brands in Pakistan that fit these criteria exactly:
+        - Category/Style: {category}
+        - Fabric Type: {fabric}
+        - Color: {color}
+        - Maximum Price Limit: {max_price} PKR
         
-        # Display Results
-        if recommendations:
-            st.success(f"Found {len(recommendations)} matching options for you!")
+        Ensure each recommendation links to a valid real-world URL structure from the official web stores of popular brands like Sapphire, Khaadi, Ethnic, Alkaram, J., Zellbury, or Nishat Linen.
+        """
+
+        with st.spinner("Analyzing Pakistani fashion brands... Please wait..."):
+            if api_key:
+                try:
+                    # Initialize the modern official Google GenAI Client
+                    client = genai.Client(api_key=api_key)
+                    
+                    # Request structured json layout from gemini-2.5-flash
+                    response = client.models.generate_content(
+                        model='gemini-3.5-flash',
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction="You are a premium Pakistani fashion personal shopper. Recommend real outfits from top Pakistani retail brands matching the criteria exactly. Provide valid, realistic direct collection or product URLs to their official web stores.",
+                            response_mime_type="application/json",
+                            response_schema=OutfitList,
+                            temperature=0.3
+                        ),
+                    )
+                    
+                    # Safely load the JSON dictionary payload
+                    data = json.loads(response.text)
+                    results = data.get("suggestions", [])
+                    
+                except Exception as e:
+                    st.error(f"AI Generation Error: {str(e)}")
+                    results = []
+            else:
+                # --- UI SIMULATOR FALLBACK DATA ---
+                results = [
+                    {
+                        "brand_name": "Sapphire",
+                        "outfit_title": f"Classic {fabric} Solid Item",
+                        "price_pkr": int(max_price * 0.75),
+                        "fabric": fabric,
+                        "category": category,
+                        "color": color,
+                        "description": f"A beautiful daily staple from their latest runway look featuring premium {fabric} stitching accents.",
+                        "website_url": "https://sapphireonline.pk"
+                    },
+                    {
+                        "brand_name": "Khaadi",
+                        "outfit_title": f"Contemporary {category} Print",
+                        "price_pkr": int(max_price * 0.90),
+                        "fabric": fabric,
+                        "category": category,
+                        "color": color,
+                        "description": f"Traditional geometric prints overlaying crisp {color} color blocks designed for modern comfort.",
+                        "website_url": "https://khaadi.com"
+                    }
+                ]
             
-            for idx, item in enumerate(recommendations):
-                with st.container():
-                    st.markdown(f"### {idx+1}. {item['brand']} — {item['product_name']}")
-                    
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Estimated Price", f"PKR {item['estimated_price_pkr']:,}")
-                    c2.metric("Fabric", item['fabric'])
-                    c3.metric("Style Match", "High Match")
-                    
-                    st.markdown(f"**Description:** {item['description']}")
-                    st.info(f"💡 **Styling Tip:** {item['styling_tip']}")
-                    st.markdown("---")
-        else:
-            st.warning("No outfits found matching those exact specs. Try broadening your budget or fabric preferences.")
+            # --- DISPLAY THE RESULTS ---
+            if results:
+                st.success(f"🎉 Found {len(results)} matching options for you!")
+                
+                for idx, outfit in enumerate(results):
+                    with st.container(border=True):
+                        c_left, c_right = st.columns([3, 1])
+                        with c_left:
+                            st.markdown(f"### 🏷️ {outfit['brand_name']} - *{outfit['outfit_title']}*")
+                            st.write(outfit['description'])
+                            
+                            # Clean structured metadata tags
+                            st.markdown(f"**🎨 Color:** {outfit['color']} | **🧵 Fabric:** {outfit['fabric']} | **📂 Category:** {outfit['category']}")
+                        
+                        with c_right:
+                            st.markdown(f"### **Rs. {outfit['price_pkr']:,}**")
+                            # Explicitly name the platform source anchor link for transparency
+                            st.markdown(
+                                f'<a href="{outfit["website_url"]}" target="_blank" style="display: inline-block; padding: 0.5em 1em; color: white; background-color: #FF4B4B; border-radius: 5px; text-decoration: none; font-weight: bold;">🛒 Buy from Brand Site</a>', 
+                                unsafe_allow_html=True
+                            )
+            else:
+                st.error("No items matching your specific parameters could be successfully processed. Try easing budget parameters.")
