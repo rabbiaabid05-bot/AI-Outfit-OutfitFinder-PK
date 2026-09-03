@@ -7,39 +7,39 @@ from pydantic import BaseModel, Field
 
 # Define Structured JSON Output Schema using Pydantic
 class OutfitSuggestion(BaseModel):
-    brand_name: str = Field(description="Name of the Pakistani brand (e.g., Khaadi, Sapphire, Ethnic, Sana Safinaz, J.)")
-    outfit_title: str = Field(description="Name or title of the dress/outfit")
-    price_pkr: int = Field(description="Approximate retail price in PKR as an integer")
+    brand_name: str = Field(description="Name of the real Pakistani retail brand (e.g., Sapphire, Khaadi, Ethnic, Alkaram, Nishat Linen, J.)")
+    article_name: str = Field(description="The specific catalog name or title of the exact dress article (e.g., 'Embroidered Lawn Shaila', 'Shadow Muse A', 'Floral Breeze Co-Ord')")
+    article_sku: str = Field(description="The alphanumeric item code or SKU identifier string characteristic of the brand (e.g., '3PESGS26V769', '0T3PSLS25V51', 'EST23490')")
+    price_pkr: int = Field(description="Approximate current retail price in PKR as an integer code matching realistic tier bounds")
     fabric: str = Field(description="Fabric material verified or matched")
-    category: str = Field(description="Style category matching user choice (e.g., Embroidered, Simple Casual, Formal)")
-    color: str = Field(description="Primary color of the dress")
-    description: str = Field(description="Short 1-2 sentence description explaining why this fits the user's requirements.")
-    website_url: str = Field(description="The realistic direct URL to this category or collection on the official brand website (e.g., https://sapphireonline.pk or https://khaadi.com)")
+    category: str = Field(description="Style category matching user choice (e.g., Embroidered, Simple Casual)")
+    color: str = Field(description="Primary color shade of the dress item")
+    design_details: str = Field(description="A highly specific description detailing the print motif, neckline style, embroidery patches, and composition of the individual article pieces.")
+    specific_product_url: str = Field(description="A deep link pointing directly to the individual product page for that specific item SKU on the official web store (e.g., https://sapphireonline.pk or similar direct brand layout). Do not provide a general landing page or collection catalog index.")
 
 class OutfitList(BaseModel):
     suggestions: list[OutfitSuggestion]
 
 # --- STREAMLIT UI SETUP ---
-st.set_page_config(page_title="LibasAI - Pakistani Outfit Finder", page_icon="👗", layout="wide")
+st.set_page_config(page_title="LibasAI - Specific Article Finder", page_icon="👗", layout="wide")
 
-st.title("👗 LibasAI: Pakistani Brand Outfit Finder")
-st.write("Specify your style preferences to search across major Pakistani fashion houses using AI.")
+st.title("👗 LibasAI: Specific Article Finder")
+st.write("Find individual Pakistani retail brand dresses matching your constraints with direct item deep links.")
 
 # Sidebar configuration for API Credentials
 with st.sidebar:
     st.header("🔑 API Settings")
-    # Tries to pull from Streamlit Secrets or Environment variable first
     default_key = os.getenv("GEMINI_API_KEY", "")
     api_key = st.text_input("Enter Gemini API Key", value=default_key, type="password", 
-                            help="Get an API key from Google AI Studio. Leave empty to use UI Simulator Mode.")
+                            help="Get an API key from Google AI Studio. Leave empty to run in Simulator mode.")
     
     if api_key:
-        st.success("API Key loaded successfully!")
+        st.success("API Key active!")
     else:
-        st.info("💡 Running in **Simulator Mode**. Enter a real Gemini API Key to fetch live dynamic AI suggestions.")
+        st.info("💡 Running in **Simulator Mode**. Provide an active Gemini API Key to fetch live dynamic AI suggestions.")
 
 # Main Input Layout Form Split into Columns
-st.subheader("🎨 Tell Us What You're Looking For")
+st.subheader("🎨 Customize Your Search Requirements")
 col1, col2 = st.columns(2)
 
 with col1:
@@ -53,26 +53,26 @@ with col1:
     )
 
 with col2:
-    color = st.text_input("Preferred Color(s)", placeholder="e.g., Royal Blue, Mustard, Emerald Green, Black")
-    max_price = st.slider("Maximum Budget (PKR)", min_value=2000, max_value=30000, value=7500, step=500)
+    color = st.text_input("Preferred Color(s)", placeholder="e.g., Mustard Yellow, Indigo Blue, Crimson Red, Jet Black")
+    max_price = st.slider("Maximum Budget Limit (PKR)", min_value=2000, max_value=30000, value=8500, step=500)
 
 # Submit query
-if st.button("✨ Find My Perfect Outfit", type="primary"):
+if st.button("✨ Search Specific Articles", type="primary"):
     if not color.strip():
-        st.warning("Please specify a preferred color to narrow down the look!")
+        st.warning("Please enter a preferred color to help narrow down the item catalog.")
     else:
-        # Build prompt payload
+        # Strict explicit formatting prompt instruction
         prompt = f"""
-        Find 3 realistic dress options from popular retail fashion brands in Pakistan that fit these criteria exactly:
-        - Category/Style: {category}
-        - Fabric Type: {fabric}
-        - Color: {color}
-        - Maximum Price Limit: {max_price} PKR
+        Find 3 realistic individual dress articles from real retail fashion brands in Pakistan that match these criteria:
+        - Style Category: {category}
+        - Fabric Base: {fabric}
+        - Color Vibe: {color}
+        - Max Price Limit: {max_price} PKR
         
-        Ensure each recommendation links to a valid real-world URL structure from the official web stores of popular brands like Sapphire, Khaadi, Ethnic, Alkaram, J., Zellbury, or Nishat Linen.
+        CRITICAL RULE: Do not suggest broad collection roots or main directory links. You must generate or target a deep individual product url routing path unique to that specific item code/SKU structure.
         """
 
-        with st.spinner("Analyzing Pakistani fashion brands... Please wait..."):
+        with st.spinner("Filtering specific brand collections... Please wait..."):
             if api_key:
                 try:
                     # Initialize the modern official Google GenAI Client
@@ -83,14 +83,13 @@ if st.button("✨ Find My Perfect Outfit", type="primary"):
                         model='gemini-3.5-flash',
                         contents=prompt,
                         config=types.GenerateContentConfig(
-                            system_instruction="You are a premium Pakistani fashion personal shopper. Recommend real outfits from top Pakistani retail brands matching the criteria exactly. Provide valid, realistic direct collection or product URLs to their official web stores.",
+                            system_instruction="You are a meticulous fashion scanner for Pakistani apparel brands. Recommend actual, highly granular individual dress items. Ensure each item contains a highly specific item code (SKU) and a corresponding product-specific deep purchase link pattern pointing directly to that article's final detail page.",
                             response_mime_type="application/json",
                             response_schema=OutfitList,
-                            temperature=0.3
+                            temperature=0.25
                         ),
                     )
                     
-                    # Safely load the JSON dictionary payload
                     data = json.loads(response.text)
                     results = data.get("suggestions", [])
                     
@@ -98,50 +97,55 @@ if st.button("✨ Find My Perfect Outfit", type="primary"):
                     st.error(f"AI Generation Error: {str(e)}")
                     results = []
             else:
-                # --- UI SIMULATOR FALLBACK DATA ---
+                # --- UI SIMULATOR FALLBACK DATA FOR SPECIFIC ARTICLES ---
                 results = [
                     {
                         "brand_name": "Sapphire",
-                        "outfit_title": f"Classic {fabric} Solid Item",
-                        "price_pkr": int(max_price * 0.75),
+                        "article_name": f"Shadow Muse {fabric} Ensemble",
+                        "article_sku": "3PESGS26V769",
+                        "price_pkr": int(max_price * 0.80),
                         "fabric": fabric,
                         "category": category,
                         "color": color,
-                        "description": f"A beautiful daily staple from their latest runway look featuring premium {fabric} stitching accents.",
-                        "website_url": "https://sapphireonline.pk"
+                        "design_details": f"A distinct 3-piece composition featuring detailed embroidery layouts across a {color} palette base canvas.",
+                        "specific_product_url": f"https://sapphireonline.pk"
                     },
                     {
                         "brand_name": "Khaadi",
-                        "outfit_title": f"Contemporary {category} Print",
-                        "price_pkr": int(max_price * 0.90),
+                        "article_name": f"Geometric Block Printed {category} Top",
+                        "article_sku": "EST23490",
+                        "price_pkr": int(max_price * 0.65),
                         "fabric": fabric,
                         "category": category,
                         "color": color,
-                        "description": f"Traditional geometric prints overlaying crisp {color} color blocks designed for modern comfort.",
-                        "website_url": "https://khaadi.com"
+                        "design_details": f"A contemporary styled shirt silhouette accentuating rich {color} design layers with fine stitching panels along the borders.",
+                        "specific_product_url": f"https://khaadi.com"
                     }
                 ]
             
-            # --- DISPLAY THE RESULTS ---
+            # --- DISPLAY THE SPECIFIC ARTICLE SCHEMATIC RESULTS ---
             if results:
-                st.success(f"🎉 Found {len(results)} matching options for you!")
+                st.success(f"🎉 Found {len(results)} distinct articles matching your criteria!")
                 
-                for idx, outfit in enumerate(results):
+                for idx, item in enumerate(results):
                     with st.container(border=True):
                         c_left, c_right = st.columns([3, 1])
                         with c_left:
-                            st.markdown(f"### 🏷️ {outfit['brand_name']} - *{outfit['outfit_title']}*")
-                            st.write(outfit['description'])
+                            st.markdown(f"### 🏷️ {item['brand_name']} — **{item['article_name']}**")
+                            st.caption(f"**SKU / Article Code Reference:** {item['article_sku']}")
+                            st.write(item['design_details'])
                             
-                            # Clean structured metadata tags
-                            st.markdown(f"**🎨 Color:** {outfit['color']} | **🧵 Fabric:** {outfit['fabric']} | **📂 Category:** {outfit['category']}")
+                            st.markdown(f"**🎨 Colorway:** {item['color']} | **🧵 Fabric Base:** {item['fabric']} | **📂 Type:** {item['category']}")
                         
                         with c_right:
-                            st.markdown(f"### **Rs. {outfit['price_pkr']:,}**")
-                            # Explicitly name the platform source anchor link for transparency
-                            st.markdown(
-                                f'<a href="{outfit["website_url"]}" target="_blank" style="display: inline-block; padding: 0.5em 1em; color: white; background-color: #FF4B4B; border-radius: 5px; text-decoration: none; font-weight: bold;">🛒 Buy from Brand Site</a>', 
-                                unsafe_allow_html=True
-                            )
+                            st.markdown(f"<h3 style='text-align: right; margin-top: 10px;'>Rs. {item['price_pkr']:,}</h3>", unsafe_allow_html=True)
+                            
+                            # Distinct styled purchase anchor button pointing directly to specific item page
+                            button_html = f"""
+                            <div style='text-align: right; margin-top: 25px;'>
+                                <a href="{item['specific_product_url']}" target="_blank" style="display: inline-block; padding: 0.6em 1.2em; color: white; background-color: #000000; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 14px;">🛒 Shop Article</a>
+                            </div>
+                            """
+                            st.markdown(button_html, unsafe_allow_html=True)
             else:
-                st.error("No items matching your specific parameters could be successfully processed. Try easing budget parameters.")
+                st.error("Could not trace clean specific article schemas. Please broaden budget constraints or change fabric parameters.")
